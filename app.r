@@ -108,7 +108,7 @@ ui <- fluidPage(
     return(y)
 }
 
-# Plotting function
+# Plotting function with custom axis size and padding
 .shade_plot <- function(
     alpha = 0.05, 
     mu_0 = 0, 
@@ -154,8 +154,7 @@ ui <- fluidPage(
             fun = dnorm, args = list(mean = mu_1, sd = se), n = detail) +
         ylim(ylim) +
         xlim(xlim) +
-        coord_cartesian(xlim = coord_cartesian_xlim,
-                        ylim = coord_cartesian_ylim, expand = FALSE) +
+        coord_cartesian(ylim = coord_cartesian_ylim, expand = FALSE) +
         ylab("Wahrscheinlichkeitsdichte") +
         xlab("Mittelwerte") +
         theme_bw()
@@ -189,9 +188,17 @@ server <- function(input, output){
                     mu_0 = input$mu_0,
                     mu_1 = input$mu_1,
                     se = se,
+                    # Throwing a warning/error when switching fixed_width on and off
+                    # maybe because input$x_from and x_to are not yet initialized
+                    # and still NULL. Maybe assign some fallbacks, but how to do
+                    # this?
+                    # Or stop using xlim here and just let it be, and instead
+                    # modify coord_cartesian_xlim?
+                    #coord_cartesian_xlim = c(input$x_from, input$x_to),
                     xlim = c(input$x_from, input$x_to),
                     coord_cartesian_ylim = c(-0.05, input$y_to * 1.1)
                     )
+
             } else {
                 .shade_plot(
                     alpha = input$alpha,
