@@ -11,25 +11,34 @@ ui <- fluidPage(
                 inputId = "alpha",
                 label = "Signifikanzniveau (einseitig)",
                 min = 0.001,
-                max = 0.15,
+                max = 0.1,
                 value = 0.05,
                 step = 0.001
             ),
-            sliderInput(
-                inputId = "delta",
-                label = "effect size",
-                min = 0,
-                max = 3,
-                value = 2.5,
-                step = 0.01
+            numericInput(
+                inputId = "mu_0",
+                label = "Erwartungswert",
+                value = 0),
+
+            numericInput(
+                inputId = "mu_1",
+                label = "Stichprobenmittelwert",
+                value = 0.5,
+                step = 0.25
+            ),
+            numericInput(
+                inputId = "sd",
+                label = "Populations-Standardabweichung",
+                value = 1,
+                min = 0
             ),
             sliderInput(
-                inputId = "sd",
-                label = "Standardabweichung",
-                min = 0.8,
-                max = 3,
-                value = 1,
-                step = 0.01
+                inputId = "n",
+                label = "Stichprobengröße n",
+                min = 30,
+                max = 1000,
+                value = 43,
+                step = 1
             )
         ),
         mainPanel(
@@ -45,59 +54,88 @@ ui <- fluidPage(
 
 ### Function definitions
 
+# Standard error
+
+.se <- function(sd, n) {
+    sd / sqrt(n)
+}
+
+# Effect Size
+.delta <- function(mu_0, mu_1, population_sd) {
+    (mu_1 - mu_0) / population_sd
+}
+
+.mu_1 <- function(delta, mu_0, population_sd) {
+    .delta * population_sd + mu_0
+}
+
+
 # Helper for shading the area under normal dist. curve
-.pshade <- function(x, min, max, mean, sd) {
-    y <- dnorm(x = x, mean = mean, sd = sd)
+.pshade <- function(x, min, max, mean, se) {
+    y <- dnorm(x = x, mean = mean, sd = se)
     y[x < min  |  x > max] <- NA
     return(y)
 }
 
 # Plotting function
-.shade_plot <- function(z_krit = 1.65, mean_a = 0, mean_b = 2.5, sd = 1, xlim = 10){
-    ggplot() +
-    stat_function(geom = "area",
+.shade_plot <- function(
+    alpha = 0.05, 
+    mu_0 = 0, 
+    mu_1 = 2.5, 
+    se = 1, 
+    xlim = c(mu_0 - 5 * se, mu_1 + 5 * se),
+    ylim = dnorm(mu_1, mean = mu_1, sd = se) * c(-0.025 , 1.15),
+    detail = 800) {
+        
+        z_krit <- qnorm(1 - alpha, mean = mu_0, sd = se)
+    
+        ggplot() +
+        stat_function(geom = "area",
                 fill = 7,
                 alpha = .4,
                 fun = .pshade, 
-                args = list(min = -4, max = z_krit, mean = mean_b, sd = sd),
-                n = 800) +
-    stat_function(geom = "area",
+                args = list(min = xlim[1], max = z_krit, mean = mu_1, se = se),
+                n = detail) +
+        stat_function(geom = "area",
                 fill = "4",
                 alpha = .4,
                 fun = .pshade, 
-                args = list(min = z_krit, max = xlim, mean = mean_a, sd = sd),
-                n = 800) +
-    stat_function(geom = "area",
+                args = list(min = z_krit, max = xlim[2], mean = mu_0, se = se),
+                n = detail) +
+        stat_function(geom = "area",
                 fill = "2",
                 alpha = .4,
                 fun = .pshade, 
-                args = list(min = mean_b, max = xlim, mean = mean_a, sd = sd),
-                n = 800) +
-    geom_vline(xintercept = c(0, mean_b), color = c(4, 7), linetype = "dashed") +
-    geom_vline(xintercept = z_krit, color = "red" ) +
-    geom_text(aes(x = mean_a, y = 0.42), 
+                args = list(min = mu_1, max = xlim[2], mean = mu_0, se = se),
+                n = detail) +
+        geom_vline(xintercept = c(mu_0, mu_1), color = c(4, 7), linetype = "dashed") +
+        geom_vline(xintercept = z_krit, color = "red" ) +
+        geom_text(aes(x = mu_0, y = 0.91 * ylim[2]), 
             label = "kein Effekt") +
-    geom_text(aes(x = mean_b, y = 0.45), 
+        geom_text(aes(x = mu_1, y = 0.98 * ylim[2]), 
             label = "beobachteter\nEffekt") +
-    # geom_text(aes(x = mean_b + 0.15, y = - (mean_a + 0.01)), 
-    #           label = "p") +
-    # geom_text(aes(x = z_krit, y = - (mean_a + 0.01)), 
-    #           label = "alpha") +
-    # geom_text(aes(x = 1.2, y = 0.06), 
-    #           label = "beta") +
-    geom_function(fun = dnorm, args = list(mean = mean_a, sd = sd)) +
-    geom_function(fun = dnorm, args = list(mean = mean_b, sd = sd)) +
-    xlim(c(-4, xlim)) +
-    ylim(c(-0.05, 0.5)) +
-    theme_void()
-}
+        geom_function(fun = dnorm, args = list(mean = mu_0, sd = se), n = detail) +
+        geom_function(fun = dnorm, args = list(mean = mu_1, sd = se), n = detail) +
+        xlim(xlim) +
+        ylim(ylim) +
+        theme_bw() +
+        ylab("Wahrscheinlichkeitsdichte") +
+        xlab("Mittelwerte")
+    }
+.shade_plot(se = 10, mu_0 = 100, mu_1 = 120, detail = 1000)
 
-# Calculation of p value, power und beta
-.power <- function(alpha = 0.05, mean_a = 0, mean_b = 2.5, sd = 1, n){
-    z_krit <- qnorm(1 - alpha, mean = mean_a, sd = sd)
-    beta <- pnorm(z_krit, mean = mean_b, sd = sd)
-    p <- 1 - pnorm(mean_b, mean = mean_a, sd = sd)
-    output <- data.frame(p = p, beta = beta, power = 1 - beta)
+
+# Calculation of effect size, p value, power und beta
+.power <- function(alpha = 0.05, mu_0 = 0, mu_1= 2.5, se = 1, n = 100, population_sd = 10){
+    z_krit <- qnorm(1 - alpha, mean = mu_0, sd = se)
+    beta <- pnorm(z_krit, mean = mu_1, sd = se)
+    p <- 1 - pnorm(mu_1, mean = mu_0, sd = se)
+    delta <- .delta(mu_0, mu_1, population_sd)
+    output <- data.frame(
+        "Cohen's d" = delta,
+        p = p, beta = beta,
+        Power = 1 - beta
+        )
     return(round(output, digits = 4))
 }
 
@@ -106,15 +144,23 @@ ui <- fluidPage(
 server <- function(input, output){
     output$p <- renderPlot(
         {
-            z_krit <- qnorm(1 - input$alpha, mean = 0, sd = input$sd)
-            delta <- input$delta
-            sd <- input$sd
+            se <- .se(input$sd, input$n)
 
-             .shade_plot(z_krit = z_krit, mean_a = 0, mean_b = delta, sd = sd) 
+            .shade_plot(
+                alpha = input$alpha,
+                mu_0 = input$mu_0,
+                mu_1 = input$mu_1,
+                se = se)
         }
     )
     output$power <- renderTable(
-        .power(alpha = input$alpha, mean_b = input$delta, sd = input$sd)
+        .power(
+            alpha = input$alpha,
+            mu_0 = input$mu_0,
+            mu_1 = input$mu_1,
+            se = .se(sd = input$sd, n = input$n),
+            population_sd = input$sd
+            )
     )
 }
 
