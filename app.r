@@ -50,7 +50,15 @@ ui <- fluidPage(
                 max = 1000,
                 value = 43,
                 step = 1
-            )
+            ),
+            checkboxInput(
+                inputId = "fixed_width",
+                label = "feste x- und y-Achse",
+                value = FALSE
+            ),
+            uiOutput("cond_x_from"),
+            uiOutput("cond_x_to"),
+            uiOutput("cond_y_to")
         ),
         mainPanel(
             h3("z-Test"),
@@ -106,8 +114,10 @@ ui <- fluidPage(
     mu_0 = 0, 
     mu_1 = 2.5, 
     se = 1, 
+    ylim = dnorm(mu_1, mean = mu_1, sd = se) * c(-0.025, 1.15),
     xlim = c(mu_0 - 5 * se, mu_1 + 5 * se),
-    ylim = dnorm(mu_1, mean = mu_1, sd = se) * c(-0.025 , 1.15),
+    coord_cartesian_xlim = xlim,
+    coord_cartesian_ylim = dnorm(mu_1, mean = mu_1, sd = se) * c(-0.025, 1.19),
     detail = 800) {
         z_krit <- qnorm(1 - alpha, mean = mu_0, sd = se)
     
@@ -130,19 +140,25 @@ ui <- fluidPage(
                 fun = .pshade, 
                 args = list(min = mu_1, max = xlim[2], mean = mu_0, se = se),
                 n = detail) +
-        geom_vline(xintercept = c(mu_0, mu_1), color = c(4, 7), linetype = "dashed") +
-        geom_vline(xintercept = z_krit, color = "red" ) +
-        geom_text(aes(x = mu_0, y = 0.91 * ylim[2]), 
+        geom_vline(
+            xintercept = c(mu_0, mu_1), color = c(4, 7), linetype = "dashed") +
+        geom_vline(
+            xintercept = z_krit, color = "red" ) +
+        geom_text(aes(x = mu_0, y = 0.91 * ylim[2]),
             label = "kein Effekt") +
-        geom_text(aes(x = mu_1, y = 0.98 * ylim[2]), 
+        geom_text(aes(x = mu_1, y = 0.98 * ylim[2]),
             label = "beobachteter\nEffekt") +
-        geom_function(fun = dnorm, args = list(mean = mu_0, sd = se), n = detail) +
-        geom_function(fun = dnorm, args = list(mean = mu_1, sd = se), n = detail) +
-        xlim(xlim) +
+        geom_function(
+            fun = dnorm, args = list(mean = mu_0, sd = se), n = detail) +
+        geom_function(
+            fun = dnorm, args = list(mean = mu_1, sd = se), n = detail) +
         ylim(ylim) +
-        theme_bw() +
+        xlim(xlim) +
+        coord_cartesian(xlim = coord_cartesian_xlim,
+                        ylim = coord_cartesian_ylim, expand = FALSE) +
         ylab("Wahrscheinlichkeitsdichte") +
-        xlab("Mittelwerte")
+        xlab("Mittelwerte") +
+        theme_bw()
     }
 
 # Calculation of effect size, p value, power und beta
@@ -167,11 +183,24 @@ server <- function(input, output){
         {
             se <- .se(input$sd, input$n)
 
-            .shade_plot(
-                alpha = input$alpha,
-                mu_0 = input$mu_0,
-                mu_1 = input$mu_1,
-                se = se)
+            if (input$fixed_width) {
+                .shade_plot(
+                    alpha = input$alpha,
+                    mu_0 = input$mu_0,
+                    mu_1 = input$mu_1,
+                    se = se,
+                    xlim = c(input$x_from, input$x_to),
+                    coord_cartesian_ylim = c(-0.05, input$y_to * 1.1)
+                    )
+            } else {
+                .shade_plot(
+                    alpha = input$alpha,
+                    mu_0 = input$mu_0,
+                    mu_1 = input$mu_1,
+                    se = se)
+            }
+            
+                
         }
     )
     output$power <- renderTable(
@@ -191,7 +220,33 @@ server <- function(input, output){
             "großer Effekt" = "<----|0.8|---->" 
             )
     )
-    
+    output$cond_x_from <- renderUI({
+        if(input$fixed_width){
+            numericInput(
+                "x_from", 
+                "x-Achse von...",
+                value = -1.5
+            )
+        }
+    })
+    output$cond_x_to <- renderUI({
+        if(input$fixed_width) {
+            numericInput(
+                "x_to", 
+                "x-Achse bis...",
+                value = 2
+            )
+        }
+    })
+    output$cond_y_to <- renderUI({
+        if(input$fixed_width) {
+            numericInput(
+                "y_to", 
+                "y-Achse bis...",
+                value = 3
+            )
+        }
+    })
 }
 
 # obligatory to create the output
