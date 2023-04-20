@@ -9,11 +9,20 @@ ui <- fluidPage(
         sidebarPanel(
             sliderInput(
                 inputId = "alpha",
-                label = "Signifikanzniveau (einseitig)",
+                label = "Signifikanzniveau",
                 min = 0.001,
                 max = 0.1,
                 value = 0.05,
                 step = 0.001
+            ),
+            selectInput(
+                inputId = "direction",
+                label = "Testrichtung",
+                choices = list(
+                    "beidseitig",
+                    "einseitig (rechts)",
+                    "einseitig (links)"),
+                selected = "einseitig (rechts)"
             ),
             numericInput(
                 inputId = "mu_0",
@@ -26,11 +35,13 @@ ui <- fluidPage(
                 value = 0.5,
                 step = 0.25
             ),
-            numericInput(
+            sliderInput(
                 inputId = "sd",
                 label = "Populations-Standardabweichung",
                 value = 1,
-                min = 0
+                min = 0,
+                max = 50,
+                step = 0.01,
             ),
             sliderInput(
                 inputId = "n",
@@ -42,12 +53,25 @@ ui <- fluidPage(
             )
         ),
         mainPanel(
+            h3("z-Test"),
+            p("Vorraussetzung: Erwartungswert und Varianz einer Population 
+            sind bekannt"),
+            p("Wie wahrscheinlich ist es, den vorliegenden Stichprobenmittelwert
+             aus dieser Population zu ziehen?"),
+            p("Annahme der Varianzhomogenität (Stichprobe hat die gleiche
+            Varianz wie Population)"),
+            
             plotOutput(
                 outputId = "p"
             ),
             tableOutput(
                 outputId = "power"
+            ),
+            h5("Interpretation von Cohen's d (1988)"),
+            tableOutput(
+                outputId = "cohensd"
             )
+
         ),
     )
 )
@@ -69,7 +93,6 @@ ui <- fluidPage(
     .delta * population_sd + mu_0
 }
 
-
 # Helper for shading the area under normal dist. curve
 .pshade <- function(x, min, max, mean, se) {
     y <- dnorm(x = x, mean = mean, sd = se)
@@ -86,7 +109,6 @@ ui <- fluidPage(
     xlim = c(mu_0 - 5 * se, mu_1 + 5 * se),
     ylim = dnorm(mu_1, mean = mu_1, sd = se) * c(-0.025 , 1.15),
     detail = 800) {
-        
         z_krit <- qnorm(1 - alpha, mean = mu_0, sd = se)
     
         ggplot() +
@@ -122,8 +144,6 @@ ui <- fluidPage(
         ylab("Wahrscheinlichkeitsdichte") +
         xlab("Mittelwerte")
     }
-.shade_plot(se = 10, mu_0 = 100, mu_1 = 120, detail = 1000)
-
 
 # Calculation of effect size, p value, power und beta
 .power <- function(alpha = 0.05, mu_0 = 0, mu_1= 2.5, se = 1, n = 100, population_sd = 10){
@@ -131,12 +151,13 @@ ui <- fluidPage(
     beta <- pnorm(z_krit, mean = mu_1, sd = se)
     p <- 1 - pnorm(mu_1, mean = mu_0, sd = se)
     delta <- .delta(mu_0, mu_1, population_sd)
-    output <- data.frame(
+    output <- tibble::tibble(
         "Cohen's d" = delta,
-        p = p, beta = beta,
-        Power = 1 - beta
+        "p-Wert" = p, 
+        "Beta-Fehler" = beta,
+        "Power" = 1 - beta
         )
-    return(round(output, digits = 4))
+    return(output)
 }
 
 ### Server logic
@@ -160,8 +181,17 @@ server <- function(input, output){
             mu_1 = input$mu_1,
             se = .se(sd = input$sd, n = input$n),
             population_sd = input$sd
+            ),
+            digits = 3
+    )
+    output$cohensd <- renderTable(
+        tibble::tibble(
+            "kleiner Effekt" = "<----|0.2|---->",
+            "mittlerer Effekt" = "<----|0.5|---->",
+            "großer Effekt" = "<----|0.8|---->" 
             )
     )
+    
 }
 
 # obligatory to create the output
